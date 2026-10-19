@@ -1,0 +1,6 @@
+{
+  "name": "Golden Compass",
+  "description": "Kenya-focused retail investing platform with real-time market data, technical analysis charts, educational assistant, and demo trading.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

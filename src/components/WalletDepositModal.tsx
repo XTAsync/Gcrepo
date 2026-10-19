@@ -1,0 +1,190 @@
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+interface Props {
+  onClose: () => void;
+  onSuccess?: () => void;
+}
+
+export function WalletDepositModal({ onClose, onSuccess }: Props) {
+  const [amount, setAmount] = useState("100");
+  const [phone, setPhone] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [polling, setPolling] = useState<null | "waiting" | "confirmed" | "failed" | "cancelled">(
+    null,
+  );
+
+  const pollStatus = async (transactionId: string, token: string) => {
+    setPolling("waiting");
+    for (let i = 0; i < 30; i++) {
+      await new Promise((r) => setTimeout(r, 4000));
+      try {
+        const res = await fetch("/api/mpesa-status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ transaction_id: transactionId }),
+        });
+        const data = (await res.json()) as { status?: string; result_desc?: string };
+        if (data.status === "confirmed") {
+          setPolling("confirmed");
+          toast.success("Wallet credited ✓");
+          onSuccess?.();
+          setTimeout(onClose, 1200);
+          return;
+        }
+        if (data.status === "failed" || data.status === "cancelled") {
+          setPolling(data.status);
+          toast.error(
+            data.status === "cancelled"
+              ? "Payment cancelled"
+              : data.result_desc || "Payment failed",
+          );
+          return;
+        }
+      } catch {
+        // keep polling
+      }
+    }
+    setPolling(null);
+    toast.message("Still waiting for M-Pesa. We'll notify you when it confirms.");
+    onClose();
+  };
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const { data: sess } = await supabase.auth.getSession();
+      const token = sess.session?.access_token;
+      if (!token) {
+        toast.error("Please log in again");
+        setBusy(false);
+        return;
+      }
+      const res = await fetch("/api/mpesa-stk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ amount: Number(amount), phone, pool_id: null }),
+      });
+      const data = (await res.json()) as {
+        error?: string;
+        message?: string;
+        transaction_id?: string;
+      };
+      if (!res.ok || data.error || !data.transaction_id) {
+        toast.error(data.error || "STK Push failed");
+        setBusy(false);
+        return;
+      }
+      toast.success(data.message || "Check your phone");
+      pollStatus(data.transaction_id, token);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Network error");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center"
+      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="glass-gold w-full max-w-[430px] rounded-t-3xl p-6 anim-fade-up"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <p className="t-mono t-sec" style={{ fontSize: 9, letterSpacing: "0.18em" }}>
+              DEPOSIT TO WALLET
+            </p>
+            <h2 className="t-display t-gold mt-1" style={{ fontSize: 18 }}>
+              M-Pesa Top-Up
+            </h2>
+          </div>
+          <button onClick={onClose} className="t-gold" style={{ fontSize: 22 }}>
+            ×
+          </button>
+        </div>
+
+        <label className="t-mono t-sec block mb-1" style={{ fontSize: 9, letterSpacing: "0.14em" }}>
+          AMOUNT (KES)
+        </label>
+        <input
+          type="number"
+          inputMode="numeric"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          min={1}
+          className="w-full glass rounded-lg px-3 py-3 t-display t-parch mb-3"
+          style={{ fontSize: 18 }}
+        />
+
+        <label className="t-mono t-sec block mb-1" style={{ fontSize: 9, letterSpacing: "0.14em" }}>
+          M-PESA PHONE
+        </label>
+        <input
+          type="tel"
+          inputMode="numeric"
+          placeholder="07XX XXX XXX"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          className="w-full glass rounded-lg px-3 py-3 t-mono t-parch mb-2"
+          style={{ fontSize: 14 }}
+        />
+        <p className="t-mono t-muted mb-4" style={{ fontSize: 9 }}>
+          Funds land in your wallet. Invest into any pool later.
+        </p>
+
+        {polling === "waiting" && (
+          <div className="glass rounded-lg p-3 mb-3 text-center">
+            <p
+              className="t-mono t-gold animate-pulse"
+              style={{ fontSize: 11, letterSpacing: "0.14em" }}
+            >
+              ⏳ AWAITING M-PESA PIN…
+            </p>
+          </div>
+        )}
+        {polling === "confirmed" && (
+          <div className="glass rounded-lg p-3 mb-3 text-center">
+            <p className="t-mono t-gold" style={{ fontSize: 11, letterSpacing: "0.14em" }}>
+              ✅ WALLET CREDITED
+            </p>
+          </div>
+        )}
+        {(polling === "failed" || polling === "cancelled") && (
+          <div className="glass rounded-lg p-3 mb-3 text-center">
+            <p
+              className="t-mono"
+              style={{ fontSize: 11, letterSpacing: "0.14em", color: "#e85d3a" }}
+            >
+              {polling === "cancelled" ? "✗ PAYMENT CANCELLED" : "✗ PAYMENT FAILED"}
+            </p>
+          </div>
+        )}
+
+        <button
+          onClick={submit}
+          disabled={busy || polling === "waiting" || polling === "confirmed"}
+          className="btn-brass w-full"
+          style={{
+            padding: "14px 16px",
+            fontSize: 12,
+            opacity: busy || polling === "waiting" || polling === "confirmed" ? 0.6 : 1,
+          }}
+        >
+          {polling === "waiting"
+            ? "WAITING…"
+            : polling === "confirmed"
+              ? "DONE"
+              : busy
+                ? "SENDING…"
+                : "SEND STK PUSH"}
+        </button>
+      </div>
+    </div>
+  );
+}
