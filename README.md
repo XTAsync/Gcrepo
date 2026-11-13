@@ -2,9 +2,7 @@
   <img src="assets/logo.svg" alt="Gcrepo logo" width="180" />
 </p>
 
-<p align="center">
-  <img src="assets/logo.svg" alt="Gcrepo logo" width="180" />
-</p>
+
 
 # Golden Compass Navigator
 
