@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.svg" alt="Gcrepo logo" width="180" />
+</p>
+
 # Golden Compass Navigator
 
 A fintech application prototype focused on investment workflows and market analysis, with portfolio tools, market charts, and account-management interfaces.
